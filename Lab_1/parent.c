@@ -11,16 +11,15 @@ int main() {
     int pipe1[2], pipe2[2];
     pid_t child1, child2;
 
-    if (pipe(pipe1) == -1 || pipe(pipe2) == -1) {
+    if (pipe(pipe1) == -1 || pipe(pipe2) == -1)
         exit(EXIT_FAILURE);
-    }
 
     child1 = fork();
     if (child1 == -1) {
         exit(EXIT_FAILURE);
     }
 
-    if (child1 != 0) {
+    if (child1 == 0) {
         close(pipe1[1]);
         close(pipe2[0]);
 
@@ -52,8 +51,8 @@ int main() {
         exit(EXIT_FAILURE);
     }
 
-    if (child2 != 0) {
-        close(pipe2[1]); 
+    if (child2 == 0) {
+        close(pipe2[1]);
 
         dup2(pipe2[0], STDIN_FILENO);
         dup2(STDOUT_FILENO, STDOUT_FILENO);
@@ -64,11 +63,7 @@ int main() {
         exit(EXIT_FAILURE);
     }
 
-    close(pipe2[0]); 
-
-    printf("1)%d\n",child1);
-    printf("2)%d\n",child2);
-
+    close(pipe2[0]);
 
     waitpid(child2, NULL, 0);
 
