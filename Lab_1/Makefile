@@ -1,16 +1,35 @@
 CC = gcc
-STD_FLAGS = -Wall -Werror -Wextra -std=c11
 
-all: flags.o main.o
-	$(CC) $(STD_FLAGS) $^ -lm -o task_1_1.exe
+CFLAGS = -Wall -Werror
 
-flags.o: flags.c
-	$(CC) $(STD_FLAGS) -c $<
+OUT_DIR = out
 
-main.o: main.c
-	$(CC) $(STD_FLAGS) -c $<
+TARGETS = $(OUT_DIR)/parent $(OUT_DIR)/child1 $(OUT_DIR)/child2
+
+OBJS = parent.o child1.o child2.o
+
+all: $(TARGETS)
+
+$(OUT_DIR):
+	mkdir -p $(OUT_DIR)
+
+$(OUT_DIR)/parent: parent.o | $(OUT_DIR)
+	$(CC) -o $@ parent.o
+
+$(OUT_DIR)/child1: child1.o | $(OUT_DIR)
+	$(CC) -o $@ child1.o
+
+$(OUT_DIR)/child2: child2.o | $(OUT_DIR)
+	$(CC) -o $@ child2.o
+
+%.o: %.c
+	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
-	rm -f *.out *.o
+	rm -f $(TARGETS) $(OBJS)
 
-rebuild: clean all
+distclean: clean
+	rm -f *.o
+
+mrproper: distclean
+	rm -rf $(OUT_DIR)
