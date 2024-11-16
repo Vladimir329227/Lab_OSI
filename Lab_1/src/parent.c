@@ -12,7 +12,7 @@ int main() {
     pid_t child1, child2;
 
     if (pipe(pipe1) == -1 || pipe(pipe2) == -1)
-        exit(EXIT_FAILURE);
+        exit(EXIT_FAILURE); 
 
     child1 = fork();
     if (child1 == -1) {
