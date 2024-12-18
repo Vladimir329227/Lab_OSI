@@ -17,10 +17,10 @@ $(OUT_DIR)/main: main.o | $(OUT_DIR)
 	$(CC) -o $@ main.o
 
 $(OUT_DIR)/allocator1: allocator1.o | $(OUT_DIR)
-	$(CC) -shared -o liballocator1.so -fPIC allocator1.c
+	$(CC) -shared -o $(OUT_DIR)/liballocator1.so -fPIC allocator1.c
 
 $(OUT_DIR)/allocator2: allocator2.o | $(OUT_DIR)
-	$(CC) -shared -o liballocator2.so -fPIC allocator2.c
+	$(CC) -shared -o $(OUT_DIR)/liballocator2.so -fPIC allocator2.c
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@

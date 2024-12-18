@@ -1,74 +1,98 @@
-// allocator2.c
+#include <stddef.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 
-typedef struct FreeBlock {
-    struct FreeBlock *next;
+typedef struct Block {
     size_t size;
-} FreeBlock;
+    struct Block *next;
+    int free;
+} Block;
 
-typedef struct {
+typedef struct Allocator {
     void *memory;
-    size_t size;
-    size_t used;
-    FreeBlock *free_list;
+    size_t total_size;
+    Block *free_list;
 } Allocator;
 
-Allocator* allocator_create(void *const memory, const size_t size) {
-    Allocator *allocator = (Allocator*)malloc(sizeof(Allocator));
+void *allocator_create(void *const memory, const size_t size) {
+    Allocator *allocator = (Allocator *)malloc(sizeof(Allocator));
+    if (!allocator) return NULL;
+
     allocator->memory = memory;
-    allocator->size = size;
-    allocator->used = 0;
-    allocator->free_list = NULL;
+    allocator->total_size = size;
+    allocator->free_list = (Block *)memory;
+    allocator->free_list->size = size - sizeof(Block);
+    allocator->free_list->next = NULL;
+    allocator->free_list->free = 1;
+
     return allocator;
 }
 
-void allocator_destroy(Allocator *const allocator) {
+void allocator_destroy(void *const allocator) {
     free(allocator);
 }
 
-void* allocator_alloc(Allocator *const allocator, const size_t size) {
-    FreeBlock *prev = NULL;
-    FreeBlock *curr = allocator->free_list;
+void *allocator_alloc(void *const allocator, const size_t size) {
+    Allocator *alloc = (Allocator *)allocator;
+    Block *prev = NULL;
+    Block *curr = alloc->free_list;
 
     while (curr) {
-        if (curr->size >= size) {
-            if (curr->size > size) {
-                FreeBlock *new_block = (FreeBlock*)((char*)curr + size);
-                new_block->size = curr->size - size;
+        if (curr->free && curr->size >= size) {
+            if (curr->size > size + sizeof(Block)) {
+                Block *new_block = (Block *)((char *)curr + sizeof(Block) + size);
+                new_block->size = curr->size - size - sizeof(Block);
                 new_block->next = curr->next;
-                if (prev) {
-                    prev->next = new_block;
-                } else {
-                    allocator->free_list = new_block;
-                }
+                new_block->free = 1;
+                curr->size = size;
+                curr->next = new_block;
             } else {
                 if (prev) {
                     prev->next = curr->next;
                 } else {
-                    allocator->free_list = curr->next;
+                    alloc->free_list = curr->next;
                 }
             }
-            allocator->used += size;
-            return curr;
+            curr->free = 0;
+            return (void *)((char *)curr + sizeof(Block));
         }
         prev = curr;
         curr = curr->next;
     }
 
-    if (allocator->used + size > allocator->size) {
-        return NULL;
-    }
-
-    void *ptr = (char*)allocator->memory + allocator->used;
-    allocator->used += size;
-    return ptr;
+    return NULL;
 }
 
-void allocator_free(Allocator *const allocator, void *const memory) {
-    FreeBlock *block = (FreeBlock*)memory;
-    block->next = allocator->free_list;
-    allocator->free_list = block;
-    allocator->used -= block->size;
+void allocator_free(void *const allocator, void *const memory) {
+
+    Allocator *alloc = (Allocator *)allocator;
+    Block *block = (Block *)((char *)memory - sizeof(Block));
+    block->free = 1;
+
+    Block *curr = alloc->free_list;
+    Block *prev = NULL;
+
+    while (curr && curr < block) {
+        prev = curr;
+        curr = curr->next;
+    }
+
+    if (prev && (char *)prev + sizeof(Block) + prev->size == (char *)block) {
+        prev->size += sizeof(Block) + block->size;
+        prev->next = block->next;
+    } else {
+        if (prev) {
+            block->next = prev->next;
+            prev->next = block;
+        } else {
+            block->next = alloc->free_list;
+            alloc->free_list = block;
+        }
+    }
+
+    if (curr && (char *)block + sizeof(Block) + block->size == (char *)curr) {
+        block->size += sizeof(Block) + curr->size;
+        block->next = curr->next;
+    }
 }

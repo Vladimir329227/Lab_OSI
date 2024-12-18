@@ -74,7 +74,7 @@ int main(int argc, char *argv[]) {
     double cpu_time_used;
 
     start = clock();
-    void *ptr1 = api.allocator_alloc(allocator, 1024);
+    void *ptr1 = api.allocator_alloc(allocator, 1327);
     end = clock();
     cpu_time_used = ((double) (end - start)) / CLOCKS_PER_SEC;
     printf("Time to allocate 1024 bytes: %f seconds\n", cpu_time_used);
