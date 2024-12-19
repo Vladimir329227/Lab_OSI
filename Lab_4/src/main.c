@@ -62,6 +62,8 @@ int main(int argc, char *argv[]) {
     }
 
     size_t memory_size = 4096;
+    size_t size_data = 1327;
+
     void *memory = mmap(NULL, memory_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (memory == MAP_FAILED) {
         perror("mmap");
@@ -74,16 +76,16 @@ int main(int argc, char *argv[]) {
     double cpu_time_used;
 
     start = clock();
-    void *ptr1 = api.allocator_alloc(allocator, 1327);
+    void *ptr1 = api.allocator_alloc(allocator, size_data);
     end = clock();
     cpu_time_used = ((double) (end - start)) / CLOCKS_PER_SEC;
-    printf("Time to allocate 1024 bytes: %f seconds\n", cpu_time_used);
+    printf("Time to allocate %li bytes: %f seconds\n", size_data, cpu_time_used);
 
     start = clock();
     api.allocator_free(allocator, ptr1);
     end = clock();
     cpu_time_used = ((double) (end - start)) / CLOCKS_PER_SEC;
-    printf("Time to free 1024 bytes: %f seconds\n", cpu_time_used);
+    printf("Time to free %li bytes: %f seconds\n", size_data, cpu_time_used);
 
     api.allocator_destroy(allocator);
 

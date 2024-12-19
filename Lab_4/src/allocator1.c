@@ -1,7 +1,8 @@
 #include <stddef.h>
-#include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/mman.h>
+#include <unistd.h>
 
 #define SIZE_DATA 32
 
@@ -19,15 +20,17 @@ typedef struct BuddyAllocator {
 } BuddyAllocator;
 
 void *allocator_create(void *const memory, const size_t size) {
-    BuddyAllocator *allocator = (BuddyAllocator *)malloc(sizeof(BuddyAllocator));
-    if (!allocator) return NULL;
+    BuddyAllocator *allocator = (BuddyAllocator *)mmap(NULL, sizeof(BuddyAllocator), PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (allocator == MAP_FAILED) {
+        perror("mmap");
+        return NULL;
+    }
 
     allocator->memory = memory;
     allocator->total_size = size;
 
-    for (int i = 0; i < 32; i++) {
+    for (int i = 0; i < SIZE_DATA; i++)
         allocator->free_lists[i] = NULL;
-    }
 
     BuddyBlock *initial_block = (BuddyBlock *)memory;
     initial_block->size = size;
@@ -41,6 +44,7 @@ void *allocator_create(void *const memory, const size_t size) {
         block_size <<= 1;
         order++;
     }
+
     initial_block->next = allocator->free_lists[order];
     if (allocator->free_lists[order]) {
         allocator->free_lists[order]->prev = initial_block;
@@ -51,7 +55,8 @@ void *allocator_create(void *const memory, const size_t size) {
 }
 
 void allocator_destroy(void *const allocator) {
-    free(allocator);
+    if (munmap(allocator, sizeof(BuddyAllocator)) == -1)
+        perror("munmap");
 }
 
 void *allocator_alloc(void *const allocator, const size_t size) {
@@ -65,7 +70,7 @@ void *allocator_alloc(void *const allocator, const size_t size) {
     }
 
     BuddyBlock *block = NULL;
-    for (int i = order; i < 32; i++) {
+    for (int i = order; i < SIZE_DATA; i++) {
         if (buddy_allocator->free_lists[i]) {
             block = buddy_allocator->free_lists[i];
             order = i;
@@ -75,14 +80,12 @@ void *allocator_alloc(void *const allocator, const size_t size) {
 
     if (!block) return NULL;
 
-    if (block->next) {
+    if (block->next)
         block->next->prev = block->prev;
-    }
-    if (block->prev) {
+    if (block->prev)
         block->prev->next = block->next;
-    } else {
+    else
         buddy_allocator->free_lists[order] = block->next;
-    }
 
     while (order > 0 && block_size > size) {
         order--;
@@ -94,9 +97,8 @@ void *allocator_alloc(void *const allocator, const size_t size) {
         buddy->prev = NULL;
         buddy->is_free = 1;
 
-        if (buddy_allocator->free_lists[order]) {
+        if (buddy_allocator->free_lists[order]) 
             buddy_allocator->free_lists[order]->prev = buddy;
-        }
         buddy_allocator->free_lists[order] = buddy;
     }
 
@@ -115,19 +117,17 @@ void allocator_free(void *const allocator, void *const memory) {
         ptrdiff_t offset = (block_addr - (char *)buddy_allocator->memory);
         char *buddy_addr = (char *)buddy_allocator->memory + (offset ^ block_size);
 
-        if (buddy_addr < (char *)buddy_allocator->memory || buddy_addr >= (char *)buddy_allocator->memory + buddy_allocator->total_size) {
+        if (buddy_addr < (char *)buddy_allocator->memory || buddy_addr >= (char *)buddy_allocator->memory + buddy_allocator->total_size)
             break;
-        }
 
         BuddyBlock *buddy = (BuddyBlock *)buddy_addr;
 
         if (buddy->is_free && buddy->size == block_size) {
-            if (buddy->next) {
+            if (buddy->next) 
                 buddy->next->prev = buddy->prev;
-            }
-            if (buddy->prev) {
+            if (buddy->prev) 
                 buddy->prev->next = buddy->next;
-            } else {
+            else {
                 int order = 0;
                 size_t temp_size = block_size;
                 while (temp_size >>= 1) order++;
@@ -151,8 +151,7 @@ void allocator_free(void *const allocator, void *const memory) {
 
     block->next = buddy_allocator->free_lists[order];
     block->prev = NULL;
-    if (buddy_allocator->free_lists[order]) {
+    if (buddy_allocator->free_lists[order])
         buddy_allocator->free_lists[order]->prev = block;
-    }
     buddy_allocator->free_lists[order] = block;
 }
