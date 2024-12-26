@@ -4,101 +4,87 @@
 #include <sys/mman.h>
 #include <unistd.h>
 
-typedef struct Block {
-    size_t size;
-    struct Block *next;
-    int free;
-} Block;
+#define MIN_BLOCK_SIZE 16
+#define MAX_ORDER 20
 
-typedef struct Allocator {
+typedef struct BuddyAllocator {
     void *memory;
-    size_t total_size;
-    Block *free_list;
-} Allocator;
+    size_t size;
+    size_t order;
+    struct BuddyBlock *free_lists[MAX_ORDER + 1];
+} BuddyAllocator;
 
-void *allocator_create(size_t size) {
-    void *memory = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-    if (memory == MAP_FAILED) {
-        perror("mmap");
+typedef struct BuddyBlock {
+    struct BuddyBlock *next;
+    size_t order;
+} BuddyBlock;
+
+void *allocator_create(void *const memory, const size_t size) {
+    BuddyAllocator *allocator = (BuddyAllocator *)memory;
+    allocator->memory = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (allocator->memory == MAP_FAILED)
         return NULL;
-    }
+    
+    allocator->size = size;
+    allocator->order = 0;
+    while ((1UL << allocator->order) < size) 
+        allocator->order++;
+    
+    for (size_t i = 0; i <= MAX_ORDER; i++)
+        allocator->free_lists[i] = NULL;
 
-    Allocator *allocator = (Allocator *)memory;
-    allocator->memory = memory;
-    allocator->total_size = size;
-    allocator->free_list = (Block *)(memory + sizeof(Allocator));
-    allocator->free_list->size = size - sizeof(Allocator) - sizeof(Block);
-    allocator->free_list->next = NULL;
-    allocator->free_list->free = 1;
-
+    BuddyBlock *block = (BuddyBlock *)allocator->memory;
+    block->next = NULL;
+    block->order = allocator->order;
+    allocator->free_lists[allocator->order] = block;
+    
     return allocator;
 }
 
 void allocator_destroy(void *const allocator) {
-    Allocator *alloc = (Allocator *)allocator;
-    if (munmap(alloc->memory, alloc->total_size) == -1)
-        perror("munmap");
+    BuddyAllocator *buddy = (BuddyAllocator *)allocator;
+    munmap(buddy->memory, buddy->size);
 }
 
 void *allocator_alloc(void *const allocator, const size_t size) {
-    Allocator *alloc = (Allocator *)allocator;
-    Block *prev = NULL;
-    Block *curr = alloc->free_list;
-
-    while (curr) {
-        if (curr->free && curr->size >= size) {
-            if (curr->size > size + sizeof(Block)) {
-                Block *new_block = (Block *)((char *)curr + sizeof(Block) + size);
-                new_block->size = curr->size - size - sizeof(Block);
-                new_block->next = curr->next;
-                new_block->free = 1;
-                curr->size = size;
-                curr->next = new_block;
-            } else {
-                if (prev) {
-                    prev->next = curr->next;
-                } else {
-                    alloc->free_list = curr->next;
-                }
+    BuddyAllocator *buddy = (BuddyAllocator *)allocator;
+    size_t order = 0;
+    while ((1UL << order) < size) 
+        order++;
+    
+    for (size_t i = order; i <= MAX_ORDER; i++) {
+        if (buddy->free_lists[i]) {
+            BuddyBlock *block = buddy->free_lists[i];
+            buddy->free_lists[i] = block->next;
+            while (i > order) {
+                i--;
+                BuddyBlock *buddy_block = (BuddyBlock *)((char *)block + (1UL << i));
+                buddy_block->next = buddy->free_lists[i];
+                buddy_block->order = i;
+                buddy->free_lists[i] = buddy_block;
             }
-            curr->free = 0;
-            return (void *)((char *)curr + sizeof(Block));
+            return block;
         }
-        prev = curr;
-        curr = curr->next;
     }
-
     return NULL;
 }
 
 void allocator_free(void *const allocator, void *const memory) {
-    Allocator *alloc = (Allocator *)allocator;
-    Block *block = (Block *)((char *)memory - sizeof(Block));
-    block->free = 1;
+    BuddyAllocator *buddy = (BuddyAllocator *)allocator;
+    BuddyBlock *block = (BuddyBlock *)memory;
+    size_t order = block->order;
 
-    Block *curr = alloc->free_list;
-    Block *prev = NULL;
-
-    while (curr && curr < block) {
-        prev = curr;
-        curr = curr->next;
-    }
-
-    if (prev && (char *)prev + sizeof(Block) + prev->size == (char *)block) {
-        prev->size += sizeof(Block) + block->size;
-        prev->next = block->next;
-    } else {
-        if (prev) {
-            block->next = prev->next;
-            prev->next = block;
+    while (order < MAX_ORDER) {
+        BuddyBlock *buddy_block = (BuddyBlock *)((char *)block + (1UL << order));
+        if (buddy_block >= (BuddyBlock *)buddy->memory && buddy_block < (BuddyBlock *)((char *)buddy->memory + buddy->size) && buddy_block->order == order) {
+            buddy->free_lists[order] = buddy_block->next;
+            order++;
+            block = (BuddyBlock *)((char *)block - (1UL << (order - 1)));
         } else {
-            block->next = alloc->free_list;
-            alloc->free_list = block;
+            break;
         }
     }
-
-    if (curr && (char *)block + sizeof(Block) + block->size == (char *)curr) {
-        block->size += sizeof(Block) + curr->size;
-        block->next = curr->next;
-    }
+    block->next = buddy->free_lists[order];
+    block->order = order;
+    buddy->free_lists[order] = block;
 }
