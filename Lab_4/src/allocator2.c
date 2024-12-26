@@ -37,7 +37,7 @@ void *allocator_create(void *const memory, const size_t size) {
     block->next = NULL;
     block->order = allocator->order;
     allocator->free_lists[allocator->order] = block;
-    
+
     return allocator;
 }
 
